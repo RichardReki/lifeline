@@ -22,8 +22,10 @@ import type {
   ExecutionStatus,
   KeeperHubClient,
   KeeperHubConfig,
+  ProtocolActionRequest,
   Receipt,
   SimulationResult,
+  TransferRequest,
 } from "../types.js";
 
 const DEFAULT_WAIT_TIMEOUT_MS = 180_000;
@@ -273,7 +275,7 @@ export class KeeperHubRestClient implements KeeperHubClient {
 
   private async execute(
     path: string,
-    req: ContractCallRequest | CheckAndExecuteRequest,
+    req: Record<string, unknown>,
     opts?: ExecOptions,
   ): Promise<{ executionId?: string; simulation?: SimulationResult; raw: unknown }> {
     const body: Record<string, unknown> = { ...req };
@@ -289,18 +291,37 @@ export class KeeperHubRestClient implements KeeperHubClient {
     };
   }
 
+  executeTransfer(
+    req: TransferRequest,
+    opts?: ExecOptions,
+  ): Promise<{ executionId?: string; simulation?: SimulationResult; raw: unknown }> {
+    return this.execute("/api/execute/transfer", { ...req }, opts);
+  }
+
+  /** Protocol action by slug, e.g. slug "aave-v3/supply" -> POST /api/execute/aave-v3/supply. */
+  executeProtocolAction(
+    req: ProtocolActionRequest,
+    opts?: ExecOptions,
+  ): Promise<{ executionId?: string; simulation?: SimulationResult; raw: unknown }> {
+    const path = `/api/execute/${req.slug
+      .split("/")
+      .map((s) => encodeURIComponent(s))
+      .join("/")}`;
+    return this.execute(path, { chainId: req.chainId, ...req.params }, opts);
+  }
+
   executeContractCall(
     req: ContractCallRequest,
     opts?: ExecOptions,
   ): Promise<{ executionId?: string; simulation?: SimulationResult; raw: unknown }> {
-    return this.execute("/api/execute/contract-call", req, opts);
+    return this.execute("/api/execute/contract-call", { ...req }, opts);
   }
 
   executeCheckAndExecute(
     req: CheckAndExecuteRequest,
     opts?: ExecOptions,
   ): Promise<{ executionId?: string; simulation?: SimulationResult; raw: unknown }> {
-    return this.execute("/api/execute/check-and-execute", req, opts);
+    return this.execute("/api/execute/check-and-execute", { ...req }, opts);
   }
 
   /**

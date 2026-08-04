@@ -112,6 +112,31 @@ export interface CheckAndExecuteRequest {
   };
 }
 
+/** POST /api/execute/transfer — native or ERC-20 transfer from the org wallet. */
+export interface TransferRequest {
+  chainId: number;
+  recipientAddress: `0x${string}`;
+  /**
+   * Decimal string in HUMAN units: native transfers are parsed with
+   * ethers.parseEther ("0.02" = 0.02 ETH); token transfers use the token's
+   * own decimals. Never pass wei.
+   */
+  amount: string;
+  /** Omit for native ETH; set for ERC-20 transfers. */
+  tokenAddress?: `0x${string}`;
+}
+
+/**
+ * POST /api/execute/{protocol}/{action} — protocol action by slug
+ * (e.g. "aave-v3/supply"). Fields beyond chainId are the action's own
+ * requiredFields/optionalFields from GET /api/mcp/schemas.
+ */
+export interface ProtocolActionRequest {
+  slug: string; // "aave-v3/supply"
+  chainId: number;
+  params: Record<string, unknown>; // e.g. { asset, amount, onBehalfOf }
+}
+
 export interface SimulationResult {
   wouldRevert: boolean;
   revertReason?: string;
@@ -145,6 +170,8 @@ export interface ExecutionStatus {
  */
 export interface KeeperHubClient {
   listChains(): Promise<unknown[]>;
+  executeTransfer(req: TransferRequest, opts?: ExecOptions): Promise<{ executionId?: string; simulation?: SimulationResult; raw: unknown }>;
+  executeProtocolAction(req: ProtocolActionRequest, opts?: ExecOptions): Promise<{ executionId?: string; simulation?: SimulationResult; raw: unknown }>;
   executeContractCall(req: ContractCallRequest, opts?: ExecOptions): Promise<{ executionId?: string; simulation?: SimulationResult; raw: unknown }>;
   executeCheckAndExecute(req: CheckAndExecuteRequest, opts?: ExecOptions): Promise<{ executionId?: string; simulation?: SimulationResult; raw: unknown }>;
   /** Polls GET /api/execute/{id}/status honoring X-Poll-Interval-Hint until terminal (hint 0) or timeout. */
