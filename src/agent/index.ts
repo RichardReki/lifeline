@@ -660,6 +660,17 @@ function startServer(deps: Deps): void {
       return;
     }
 
+    if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) {
+      try {
+        const html = readFileSync(new URL("../../dashboard/index.html", import.meta.url), "utf8");
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" });
+        res.end(html);
+      } catch {
+        sendJson(res, 404, { ok: false, error: "dashboard/index.html not found" });
+      }
+      return;
+    }
+
     sendJson(res, 404, { ok: false, error: "not found" });
   }
 
