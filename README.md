@@ -90,24 +90,37 @@ npm test                  # vitest suites
 
 ## KeeperHub surfaces used
 
-- [x] **Direct execution REST** — `POST /api/execute/contract-call` with `simulate: true` dry-runs (`abiFunction` + JSON-string `functionArgs`/`abi` field conventions)
-- [x] **`check-and-execute`** — on-chain condition gating on a *custom view contract* (`HealthFactorLens`), the core of the safety story
-- [x] **Workflows** — Block trigger + condition edges (`sourceHandle: 'true'`) + Webhook action + `{{@nodeId:Label.field}}` templating
-- [x] **Hosted MCP** (`/mcp`, Streamable HTTP + Bearer) — `search_protocol_actions`, `execute_protocol_action` (aave-v3 slugs), `list_integrations`, `get_wallet_integration`, `validate_workflow`
-- [x] **Execution lifecycle** — `Idempotency-Key` header, `X-Poll-Interval-Hint` polling, `receipts[].verified` checking
+- [x] **Direct execution REST** — `POST /api/execute/{transfer,contract-call,check-and-execute}` with `simulate: true` dry-runs (real schema: numeric `chainId` + `functionName`; JSON-string `functionArgs`/`abi`)
+- [x] **`check-and-execute`** — on-chain condition gating on a *custom view contract* (`HealthFactorLens`), the core of the safety story — **used in anger for a live rescue** (below)
+- [x] **Protocol actions** — `aave-v3/supply` / `aave-v3/borrow` by slug for position management
+- [x] **Workflows** — Block trigger + `web3/read-contract` on the lens + Condition edges (`sourceHandle: 'true'`) + alert leg, running live (`enabled: true`) every 25 Sepolia blocks
+- [x] **Hosted MCP** (`/mcp`, Streamable HTTP + Bearer) — `search_protocol_actions`, `list_integrations`, `update_workflow_listing`, `list_workflow`
+- [x] **x402 / MPP marketplace** — `lifeline-rescue-check` listed at $0.05/call; the unauthenticated endpoint answers with a dual-protocol payment challenge (x402 v2 on Base USDC **and** Tempo/MPP `www-authenticate`)
+- [x] **Execution lifecycle** — `Idempotency-Key` header (cached-replay and 409-conflict both observed live), `X-Poll-Interval-Hint` polling, `receipts[].verified` checking
+- [x] **Gas sponsorship** — every Sepolia execution below ran `sponsored: true` (relayed), which is why receipts/`transactionLink`, not the org wallet's explorer history, are the proof
 - [x] **Chain/registry discovery** — `GET /api/chains`, `GET /api/mcp/schemas` (day-1 script diffs our request shapes against the live registry)
-- [ ] **Gas sponsorship / spend caps** — probed by the day-1 script; adopted if available on our org
-- [ ] **x402 marketplace** — roadmap (below)
 
-*(Checked items are integrated in this codebase and exercised by `npm run day1` / the agent; unchecked are probing or roadmap.)*
+## Live on Sepolia — on-chain proof
 
-## Roadmap to demo
+Everything below happened through KeeperHub, unattended where it matters. Org wallet (Turnkey-custodied): `0xE20405094C45b4F9adc050C429F2F45C72fF7467`. Lens: [`0x0D7D746d915B885a61897f4f6CF38372e2f5a802`](https://sepolia.etherscan.io/address/0x0D7D746d915B885a61897f4f6CF38372e2f5a802).
 
-In progress, in order:
+| Step | KeeperHub surface | Tx |
+|---|---|---|
+| Fund deployer (0.02 ETH) | direct `transfer` | [`0x4b61…c78d`](https://sepolia.etherscan.io/tx/0x4b61b8b6c32aa0c7692560f37b16468c73a83d9ff6faed5c8835e616afd4c78d) |
+| Mint 2 WBTC (test faucet) | `contract-call` | [`0x710f…7080`](https://sepolia.etherscan.io/tx/0x710f142ec206e366871723603882a950704523df9a007560f4e94f94a5c37080) |
+| Mint 2,000 LINK (rescue float) | `contract-call` | [`0xa044…1347`](https://sepolia.etherscan.io/tx/0xa0448e1a3d9d77ab8e146139a48fc127716ea1203fc614f336261a8978861347) |
+| Approve Pool for WBTC | `contract-call` | [`0x6b4c…b605`](https://sepolia.etherscan.io/tx/0x6b4c6009431f0e6bcfc358610f1a59306c5fe3b8084f6284416532aa1ae4b605) |
+| Supply 1 WBTC ($60k collateral) | `aave-v3/supply` | [`0xdff5…94b6`](https://sepolia.etherscan.io/tx/0xdff59360694160ebeeda5807d4f2698a61ba2a09e1dd18a64281efe2329e94b6) |
+| Borrow 909 LINK → HF 1.65 | `aave-v3/borrow` | [`0xaa7d…454d`](https://sepolia.etherscan.io/tx/0xaa7d3ffba86249b6506168328730d2614df16eb81ebd308a6e8e0b94cbca454d) |
+| **Crash**: borrow +395 LINK → HF 1.15 | `aave-v3/borrow` | [`0xb371…abf1`](https://sepolia.etherscan.io/tx/0xb3713be9c153122cbb1fbb22b4c5045fd07c96fa97d7d51b4b6ccbfe8ab1abf1) |
+| Agent: approve LINK for repay | `contract-call` via `ReliableExecutor` | [`0xfa77…c89b`](https://sepolia.etherscan.io/tx/0xfa77ec86f456e26c5ddc7ab8dbb34203d216eef0f3ad9f7d2961edd5cdcfc89b) |
+| **Agent rescue: repay 304 LINK, HF-gated on-chain → HF 1.50** | **`check-and-execute`** | [`0x88f7…9450`](https://sepolia.etherscan.io/tx/0x88f745c9eb4325c5a8c5c8905eb204a040953bb98667443fdfb12a3ccd819450) |
 
-1. **Live Sepolia run** — fund the org wallet, deploy `HealthFactorLens`, open a deliberately fragile Aave v3 position, and record the full detect->decide->execute rescue with transaction links.
-2. **x402 marketplace listing** — publish LIFELINE as a paid protection service: position owners pay per guarded epoch over x402, the agent guards any account that has paid.
-3. **Per-workflow MCP** — expose each guarded position's workflow as its own MCP tool so other agents (or a wallet UI) can query guard status and request protection programmatically.
-4. **SSE dashboard** — live `AgentEvent` stream (every tick, warning, plan, simulation, execution, receipt) rendered as a real-time audit trail.
+The two bold rows are the story: a position deliberately crashed to HF 1.15, and the agent — with no human in the loop — detected it, planned the minimal-cost rescue, and landed a repay through `check-and-execute`, whose condition (`HealthFactorLens.healthFactorOf < 1.3e18`) was **re-verified on-chain in the same transaction that executed the rescue**. Debt went $39,130 → $29,909; HF closed at 1.5046 against a 1.5 target.
 
-**Honesty note:** everything above describes code in this repository and verified KeeperHub behavior. Transaction links, the x402 listing, and demo recordings will be added the moment they are real — no placeholders, no faked receipts.
+Also live right now:
+
+- **`LIFELINE HF Monitor`** — Block-trigger workflow, enabled, reads the lens every 25 blocks and alerts when HF < 1.3.
+- **[`lifeline-rescue-check`](https://app.keeperhub.com/api/mcp/workflows/lifeline-rescue-check/call)** — $0.05/call marketplace listing; `POST` it unauthenticated and you get the dual-protocol 402 challenge back.
+
+**Honesty note:** every claim above is a real execution against `app.keeperhub.com` — no placeholders, no faked receipts. Demo video: coming with the submission.
