@@ -1,0 +1,69 @@
+{
+  "_comment": "BEST-EFFORT KeeperHub workflow definition — NOT yet validated. Once a kh_ API key exists, run it through the hosted MCP validate_workflow tool (https://app.keeperhub.com/mcp) or regenerate the exact node configs with ai_generate_workflow, then POST /api/workflows/create. Node config key names inside data.config are educated guesses from the docs (nodes[{id,type,data:{label,config}}] + edges with sourceHandle 'true'/'false' on condition edges; Block trigger takes network+blockInterval; templating is {{@nodeId:Label.field}}). Placeholders in <angle brackets> must be filled from .env before creating: <LENS_ADDRESS_SEPOLIA>, <AAVE_POOL_SEPOLIA>, <GUARDED_ACCOUNT>, <AGENT_PUBLIC_URL> (public URL of the agent, e.g. an ngrok/cloudflared tunnel to WEBHOOK_PORT), <WEBHOOK_SECRET>. The threshold 1300000000000000000 is HF_WARN_THRESHOLD 1.3 at 1e18 — keep in sync with .env.",
+  "name": "LIFELINE HF monitor (sepolia)",
+  "description": "Every 25 blocks, read HealthFactorLens.healthFactorOf(pool, account); if HF < 1.3e18, POST an alert to the LIFELINE agent webhook, which plans and executes the rescue via check-and-execute.",
+  "nodes": [
+    {
+      "id": "blockTrigger",
+      "type": "trigger",
+      "data": {
+        "label": "Every 25 blocks",
+        "config": {
+          "trigger": "Block",
+          "network": "sepolia",
+          "blockInterval": 25
+        }
+      }
+    },
+    {
+      "id": "readHf",
+      "type": "action",
+      "data": {
+        "label": "Read HF",
+        "config": {
+          "action": "web3/read-contract",
+          "network": "sepolia",
+          "contractAddress": "<LENS_ADDRESS_SEPOLIA>",
+          "abi": "[{\"type\":\"function\",\"name\":\"healthFactorOf\",\"stateMutability\":\"view\",\"inputs\":[{\"name\":\"pool\",\"type\":\"address\"},{\"name\":\"account\",\"type\":\"address\"}],\"outputs\":[{\"name\":\"healthFactor\",\"type\":\"uint256\"}]}]",
+          "abiFunction": "healthFactorOf",
+          "functionArgs": "[\"<AAVE_POOL_SEPOLIA>\", \"<GUARDED_ACCOUNT>\"]"
+        }
+      }
+    },
+    {
+      "id": "hfBelowWarn",
+      "type": "action",
+      "data": {
+        "label": "HF below warn",
+        "config": {
+          "action": "condition",
+          "left": "{{@readHf:Read HF.result}}",
+          "operator": "lt",
+          "right": "1300000000000000000"
+        }
+      }
+    },
+    {
+      "id": "alertAgent",
+      "type": "action",
+      "data": {
+        "label": "Alert agent",
+        "config": {
+          "action": "http/request",
+          "method": "POST",
+          "url": "<AGENT_PUBLIC_URL>/hook/hf-alert",
+          "headers": {
+            "Content-Type": "application/json",
+            "X-Lifeline-Secret": "<WEBHOOK_SECRET>"
+          },
+          "body": "{\"account\":\"<GUARDED_ACCOUNT>\",\"healthFactor\":\"{{@readHf:Read HF.result}}\",\"source\":\"keeperhub-block-trigger\"}"
+        }
+      }
+    }
+  ],
+  "edges": [
+    { "id": "e-trigger-read", "source": "blockTrigger", "target": "readHf" },
+    { "id": "e-read-cond", "source": "readHf", "target": "hfBelowWarn" },
+    { "id": "e-cond-alert", "source": "hfBelowWarn", "target": "alertAgent", "sourceHandle": "true" }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "name": "lifeline",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "LIFELINE — liquidation guardian agent that lands on-chain-gated rescue transactions through KeeperHub and sells protection-as-a-service via x402",
+  "scripts": {
+    "agent": "tsx src/agent/index.ts",
+    "day1": "tsx scripts/day1-verify.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.28.0",
+    "viem": "^2.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}
