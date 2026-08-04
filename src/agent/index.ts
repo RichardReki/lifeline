@@ -445,15 +445,21 @@ async function executeRescue(deps: Deps, account: Address, plan: RescuePlan): Pr
     console.warn("execute: KH_API_KEY not set — rescue planned but NOT executed");
     return;
   }
+  // The idempotency key is derived from the label, so the label must encode
+  // the INTENT — account, plan kind, asset, amount. A static label collides
+  // with the previous rescue inside KeeperHub's 24h idempotency window and
+  // 409s (idempotency_conflict) the moment the amount differs. Same intent
+  // retried -> same key (safe replay); new rescue -> new key.
+  const intent = `${account.slice(2, 10)}-${plan.kind}-${plan.assetSymbol}-${plan.amount}`;
   if (approve) {
     await deps.executor.runContractCall(approve, {
       account,
-      label: `lifeline-approve-${plan.assetSymbol}`,
+      label: `lifeline-approve-${intent}`,
     });
   }
   const status = await deps.executor.runCheckAndExecute(request, {
     account,
-    label: `lifeline-rescue-${plan.kind}`,
+    label: `lifeline-rescue-${intent}`,
   });
   deps.state.lastRescueAt = Date.now();
   console.log(
