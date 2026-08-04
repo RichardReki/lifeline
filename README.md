@@ -123,4 +123,8 @@ Also live right now:
 - **`LIFELINE HF Monitor`** — Block-trigger workflow, enabled, reads the lens every 25 blocks and alerts when HF < 1.3.
 - **[`lifeline-rescue-check`](https://app.keeperhub.com/api/mcp/workflows/lifeline-rescue-check/call)** — $0.05/call marketplace listing; `POST` it unauthenticated and you get the dual-protocol 402 challenge back.
 
+## For the next builder
+
+Everything we tripped over on the way here became **[keeperhub-agent-starter](https://github.com/RichardReki/keeperhub-agent-starter)**: your agent's first receipt-verified KeeperHub transaction in under 10 minutes, plus field notes on 9 onboarding traps (with repros and proposed fixes) in its [teardown](https://github.com/RichardReki/keeperhub-agent-starter/blob/main/teardown/TEARDOWN.md).
+
 **Honesty note:** every claim above is a real execution against `app.keeperhub.com` — no placeholders, no faked receipts. Demo video: coming with the submission.
