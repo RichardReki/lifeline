@@ -118,10 +118,23 @@ Everything below happened through KeeperHub, unattended where it matters. Org wa
 
 The two bold rows are the story: a position deliberately crashed to HF 1.15, and the agent — with no human in the loop — detected it, planned the minimal-cost rescue, and landed a repay through `check-and-execute`, whose condition (`HealthFactorLens.healthFactorOf < 1.3e18`) was **re-verified on-chain in the same transaction that executed the rescue**. Debt went $39,130 → $29,909; HF closed at 1.5046 against a 1.5 target.
 
-Also live right now:
+A second crash-and-rescue cycle ran the next day and is worth reading the commit log for: a *static* idempotency label collided inside KeeperHub's 24h window and returned `409 idempotency_conflict` — the exact failure this README claims to prevent, caught by running the thing in anger rather than by reasoning about it. Keys are now derived from rescue intent (account, plan kind, asset, amount), and rescue #2 landed clean: [`0x842f…cfa7`](https://sepolia.etherscan.io/tx/0x842f3896b59cc4fc66c1e8545c66e395f881249e2fb96924c2acd28e2902cfa7).
 
-- **`LIFELINE HF Monitor`** — Block-trigger workflow, enabled, reads the lens every 25 blocks and alerts when HF < 1.3.
-- **[`lifeline-rescue-check`](https://app.keeperhub.com/api/mcp/workflows/lifeline-rescue-check/call)** — $0.05/call marketplace listing; `POST` it unauthenticated and you get the dual-protocol 402 challenge back.
+### The guard on duty
+
+`LIFELINE HF Monitor` (Block trigger, every 25 Sepolia blocks) has been enabled and running continuously. The 50 most recent runs at time of writing:
+
+| Metric | Value |
+| --- | --- |
+| Success rate | **50/50 (100%)** |
+| Trigger interval | 296–325 s (p50 **311 s**) — 25 blocks at ~12.4 s |
+| Steps per run | 3/4 — trigger → lens read → condition; the alert leg correctly stays unexecuted |
+| Condition outcome | `false` × 50 — health factor above threshold every time |
+| Trigger source | `block` (no manual runs in the window) |
+
+Fifty consecutive runs that correctly decided **not** to act is the half of automation nobody demos. Paired with the two rescues above — where the same pipeline did act, and only because the chain re-confirmed the danger — that is the whole safety claim in one dataset.
+
+Also live: **[`lifeline-rescue-check`](https://app.keeperhub.com/api/mcp/workflows/lifeline-rescue-check/call)** — $0.05/call marketplace listing; `POST` it unauthenticated and you get the dual-protocol 402 challenge back (x402 on Base USDC *and* Tempo/MPP).
 
 ## For the next builder
 
