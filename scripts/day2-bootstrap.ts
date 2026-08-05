@@ -280,6 +280,81 @@ const ORACLE_PRICE_ABI = [
   },
 ] as const;
 
+/** Live account data + the oracle's LINK price, in one round trip. */
+async function readPosition(): Promise<{
+  acct: readonly [bigint, bigint, bigint, bigint, bigint, bigint];
+  linkPrice8: bigint;
+}> {
+  const web3 = createPublicClient({ chain: sepolia, transport: viemHttp(RPC) });
+  const [acct, linkPrice8] = await Promise.all([
+    web3.readContract({ address: POOL, abi: POOL_ABI, functionName: "getUserAccountData", args: [ORG_WALLET] }),
+    web3.readContract({ address: ORACLE, abi: ORACLE_PRICE_ABI, functionName: "getAssetPrice", args: [LINK] }),
+  ]);
+  return { acct, linkPrice8 };
+}
+
+/**
+ * Repay LINK until the position sits at the requested health factor.
+ *
+ * This is the demo-day reset: a take ends with the agent having rescued to
+ * HF 1.50, and the next take needs to start healthy again at 1.65. It is
+ * deliberately NOT part of the agent — the agent only ever repays down to
+ * HF_TARGET when the chain says a position is in danger.
+ */
+async function healToTargetHf(targetHfBps: bigint, label: string): Promise<void> {
+  const { acct, linkPrice8 } = await readPosition();
+  // debt(USD8) for target HF = collateral(USD8) * liqThr(bps) / targetHf(bps)
+  const targetDebtUsd8 = (acct[0] * acct[3]) / targetHfBps;
+  const repayUsd8 = acct[1] - targetDebtUsd8;
+  if (repayUsd8 <= 0n) {
+    console.log(`position already at/above HF ${Number(targetHfBps) / 10000} — nothing to repay`);
+    return;
+  }
+  // Round the LINK amount up so accrued interest between sizing and execution
+  // cannot leave us a hair under target.
+  const repayLink18 = (repayUsd8 * 10n ** 18n) / linkPrice8 + 10n ** 16n;
+  console.log(
+    `live sizing: collateral=$${formatUnits(acct[0], 8)} debt=$${formatUnits(acct[1], 8)} liqThr=${acct[3]}bps ` +
+      `LINK=$${formatUnits(linkPrice8, 8)} -> repay ${formatUnits(repayLink18, 18)} LINK for HF≈${Number(targetHfBps) / 10000}`,
+  );
+
+  // Pool has to be able to pull the LINK. Key includes the amount: a reused
+  // key with a changed payload is a 409 (learned the hard way in rescue #2).
+  const { client, executor } = makeExecutor();
+  if (BROADCAST) {
+    await executor.runContractCall(
+      {
+        chainId: CHAIN_ID,
+        contractAddress: LINK,
+        abi: ERC20_APPROVE_ABI,
+        functionName: "approve",
+        functionArgs: JSON.stringify([POOL, repayLink18.toString()]),
+      },
+      { account: ORG_WALLET, label: `day2:approve-link-${repayLink18}` },
+    );
+  } else {
+    const sim = await client.executeContractCall(
+      {
+        chainId: CHAIN_ID,
+        contractAddress: LINK,
+        abi: ERC20_APPROVE_ABI,
+        functionName: "approve",
+        functionArgs: JSON.stringify([POOL, repayLink18.toString()]),
+      },
+      { simulate: true },
+    );
+    console.log(`   approve simulation: ${JSON.stringify(sim.simulation)}`);
+  }
+
+  await protocolStep(
+    `${label}: ${formatUnits(repayLink18, 18)} LINK`,
+    "aave-v3/repay",
+    LINK,
+    repayLink18.toString(),
+    { interestRateMode: "2" },
+  );
+}
+
 /**
  * Borrow LINK sized off the LIVE account data + oracle price so the position
  * lands at the requested health factor (bps, e.g. 16500 = HF 1.65).
@@ -336,7 +411,10 @@ switch (STEP) {
   case "crash":
     await borrowToTargetHf(CRASH_HF_BPS, "DEMO: borrow LINK to sink HF");
     break;
+  case "heal":
+    await healToTargetHf(TARGET_HF_BPS, "DEMO RESET: repay LINK to restore HF");
+    break;
   default:
-    console.log("usage: npx tsx scripts/day2-bootstrap.ts <status|fund-deployer|mint|approve|supply|borrow|crash> [--broadcast]");
+    console.log("usage: npx tsx scripts/day2-bootstrap.ts <status|fund-deployer|mint|approve|supply|borrow|crash|heal> [--broadcast]");
     process.exit(STEP ? 1 : 0);
 }
