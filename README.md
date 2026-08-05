@@ -134,7 +134,28 @@ A second crash-and-rescue cycle ran the next day and is worth reading the commit
 
 Fifty consecutive runs that correctly decided **not** to act is the half of automation nobody demos. Paired with the two rescues above — where the same pipeline did act, and only because the chain re-confirmed the danger — that is the whole safety claim in one dataset.
 
-Also live: **[`lifeline-rescue-check`](https://app.keeperhub.com/api/mcp/workflows/lifeline-rescue-check/call)** — $0.05/call marketplace listing; `POST` it unauthenticated and you get the dual-protocol 402 challenge back (x402 on Base USDC *and* Tempo/MPP).
+### Someone actually paid
+
+Protection is a product, so the seller side had to work for a stranger. `lifeline-rescue-check` is listed on the KeeperHub marketplace at **$0.05/call**; `POST` it unauthenticated and it answers with a dual-rail 402 — x402 v2 on Base USDC *and* Tempo/MPP on chain 4217, same price, same payee, one response.
+
+A buyer agent with its own Turnkey wallet — a different identity from the guarded position's — then paid it for real:
+
+| | |
+| --- | --- |
+| Settlement | [`0xfdd6…1f0c`](https://basescan.org/tx/0xfdd675949e148280bb2a2dd74a17445824c5ec1749f96f68a1c5eb483a231f0c) — 0.05 USDC, Base mainnet, EIP-3009 `TransferWithAuthorization` |
+| Buyer | `0xDaC3…99d4` → 10.00 → 9.95 USDC |
+| Seller | `0xE204…7467` → +0.05 USDC |
+| Protocol used | `x402` (the wallet picked it from the dual-rail challenge) |
+| Response | HF `1649812249271816192` — the same lens read the rescue gate uses |
+
+The call also came back carrying an **ERC-8004 identity** for the workflow ([agent 31875](https://8004scan.io/agents/ethereum/31875) on the Ethereum registry) and an invitation for the payer to sign on-chain reputation feedback for the execution it just bought. Discovery on x402scan, identity and reputation on ERC-8004, settlement on Base: the whole agent-commerce stack, exercised by one $0.05 call.
+
+Reproduce both halves yourself:
+
+```bash
+npx tsx scripts/day5-buyer.ts challenge   # free — decodes the dual-rail 402
+npx tsx scripts/day5-buyer.ts buy         # real payment, needs a funded wallet
+```
 
 ## For the next builder
 
