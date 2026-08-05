@@ -529,9 +529,12 @@
       hfStatus.classList.add('st-good');
       hfStatus.textContent = '● healthy';
     } else if (hf >= GUARD) {
+      /* Between the rescue target and the guard threshold. Interest accrual
+         lands a healthy position here routinely, so this is "drifting", not
+         an alarm — the agent does not act until GUARD. */
       hfTile.classList.add('hf-warn');
       hfStatus.classList.add('st-warn');
-      hfStatus.textContent = '● warning zone';
+      hfStatus.textContent = '● below target';
     } else {
       hfTile.classList.add('hf-bad');
       hfStatus.classList.add('st-bad');
@@ -596,7 +599,8 @@
       return;
     }
 
-    var m = { l: 48, r: 100, t: 16, b: 28 };
+    /* r leaves room for the widest guide label ("1.00 LIQUIDATION") */
+    var m = { l: 48, r: 132, t: 16, b: 28 };
     var pw = W - m.l - m.r, ph = H - m.t - m.b;
     var lo = 0.92, hi = 1.58;                    /* always keep the three guides on screen */
     for (var i = 0; i < points.length; i++) {
