@@ -161,4 +161,9 @@ npx tsx scripts/day5-buyer.ts buy         # real payment, needs a funded wallet
 
 Everything we tripped over on the way here became **[keeperhub-agent-starter](https://github.com/RichardReki/keeperhub-agent-starter)**: your agent's first receipt-verified KeeperHub transaction in under 10 minutes, plus field notes on 9 onboarding traps (with repros and proposed fixes) in its [teardown](https://github.com/RichardReki/keeperhub-agent-starter/blob/main/teardown/TEARDOWN.md).
 
+Filed upstream while building:
+
+- **[PR #1926](https://github.com/KeeperHub/keeperhub/pull/1926) — merged into `staging`.** Every "Edit this page" link on docs.keeperhub.com was 404ing. The branch was only half the bug; the other half was the `content/` segment Nextra reports because `docs-site/content` is a symlink to `../docs`. Verified by building the docs site locally and checking all 172 rendered links against the branch. The maintainer merged it and generalised the fix into a `toDocsRelativePath()` helper that also covers the symlink-resolved layout our repro couldn't produce on Windows.
+- **[Issues #1927–#1933](https://github.com/KeeperHub/keeperhub/issues?q=is%3Aissue+author%3ARichardReki)** — each with expect/actual, a copy-paste repro, and a proposed fix. Three are funds-risk: protocol actions silently ignore `simulate` and broadcast for real; `value` is parsed as ether by a function named `parseNativeValueWei`; `check-and-execute` silently string-compares multi-output views instead of erroring.
+
 **Honesty note:** every claim above is a real execution against `app.keeperhub.com` — no placeholders, no faked receipts. Demo video: coming with the submission.
