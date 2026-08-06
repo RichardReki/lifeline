@@ -53,6 +53,20 @@ The KeeperHub client (`src/keeperhub/`) treats every execution as hostile until 
 - **Retry taxonomy** — 4xx validation: never retried (fix the request); 409: poll or escalate as above; 429: back off per rate-limit headers; 5xx / network: retry with the *same* idempotency key; on-chain revert: re-read state, re-plan.
 - **Audit trail** — every step emits an `AgentEvent` to an append-only local log (re-served over SSE by the dashboard, in progress).
 
+## Why KeeperHub and not just an API call?
+
+A fair question to ask of anything built on an execution layer: what would break if this agent talked to an RPC endpoint directly? Three things, and this project hit all three for real rather than in theory.
+
+| A plain API call… | KeeperHub | What happened here |
+| --- | --- | --- |
+| fires whatever the caller decided, whenever it lands | `check-and-execute` re-reads the condition **on-chain, in the execution context**, and drops the write if it no longer holds | The rescue repay is gated on `HealthFactorLens.healthFactorOf < 1.3e18`. The agent's decision is a *proposal*; the chain approves it or nothing is spent |
+| double-spends when you retry a request whose response you never saw | `Idempotency-Key` replays the original execution instead of sending a second one | Re-running the starter script returned the **same `executionId` and tx hash**, no second broadcast. And rescue #2 hit a real `409 idempotency_conflict` from a key bug of ours — a plain API would have silently repaid twice |
+| tells you a transaction was *sent* | `receipts[].verified` + `receiptStatus` tell you it **landed and succeeded** | Nothing in this agent counts as done until the receipt verifies; `reverted` / `timeout` / `not_found` each route to different handling |
+
+On top of that: gas sponsorship (these Sepolia executions cost the wallet nothing), congestion-aware gas estimation, and an execution history the workflow layer keeps for you.
+
+The honest version: an agent *can* be built on raw RPC. It just has to reimplement all of the above, badly, before it can be trusted with someone else's collateral — which is the whole reason LIFELINE is sellable to a stranger at $0.05 a call.
+
 ## Quickstart
 
 ```bash
