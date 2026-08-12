@@ -462,6 +462,14 @@ async function executeRescue(deps: Deps, account: Address, plan: RescuePlan): Pr
     label: `lifeline-rescue-${intent}`,
   });
   deps.state.lastRescueAt = Date.now();
+
+  // Drop the sample history for this account. `projectHf` fits a drift line,
+  // and drift is what interest accrual and prices do to a *fixed* position. We
+  // just repaid part of the debt, so every prior sample describes a different
+  // position — fitting across that models the rescue itself as a trend and
+  // projects a fall that already stopped. First warning after a rescue must
+  // come from fresh observations.
+  deps.state.samples.delete(account.toLowerCase());
   console.log(
     `execute: check-and-execute ${status.executionId} → ${status.state}` +
       (status.transactionHash ? ` (${status.transactionHash})` : ""),

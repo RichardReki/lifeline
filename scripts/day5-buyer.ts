@@ -85,6 +85,23 @@ async function challenge(): Promise<void> {
   );
 }
 
+/** MCP tools answer with `content: [{type:"text", text:"<json>"}]` — pull the JSON out. */
+function unwrap(res: unknown): unknown {
+  const c = (res as { content?: Array<{ type?: string; text?: string }> } | undefined)?.content;
+  const text = Array.isArray(c) ? c.find((x) => x?.type === "text")?.text : undefined;
+  if (typeof text !== "string") return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function readBalance(res: unknown): { address: string; base: string } {
+  const b = unwrap(res) as { base?: { amount?: string; address?: string } } | null;
+  return { address: b?.base?.address ?? "?", base: `${b?.base?.amount ?? "?"} USDC` };
+}
+
 /** Pay the challenge and invoke the workflow through the agentic wallet. */
 async function buy(): Promise<void> {
   const client = new Client({ name: "lifeline-buyer", version: "1.0.0" });
@@ -93,20 +110,39 @@ async function buy(): Promise<void> {
 
   try {
     const balance = await client.callTool({ name: "balance", arguments: {} });
-    console.log("wallet balance before:", JSON.stringify(balance.content));
+    const before = readBalance(balance);
+    console.log(`buyer wallet  ${before.address}`);
+    console.log(`  Base USDC   ${before.base}\n`);
 
-    console.log(`\npaying + invoking ${SLUG} for ${SUBJECT} …`);
+    console.log(`paying + invoking ${SLUG} for ${SUBJECT} …\n`);
     const out = await client.callTool({
       name: "call_workflow",
       arguments: { slug: SLUG, body: { user: SUBJECT }, paymentHint: "x402", responseFormat: "json" },
     });
-    console.log("\nresult:", JSON.stringify(out.content, null, 2));
 
-    const after = await client.callTool({ name: "balance", arguments: {} });
-    console.log("\nwallet balance after:", JSON.stringify(after.content));
+    // The MCP tool returns the HTTP response as an escaped JSON string inside a
+    // text content block. Unwrap it so the interesting facts are readable
+    // instead of buried three levels of escaping deep.
+    const env = unwrap(out) as Record<string, unknown> | null;
+    const body = env && typeof env.bodyText === "string" ? (JSON.parse(env.bodyText) as Record<string, unknown>) : null;
+    const output = body?.output as Record<string, unknown> | undefined;
+    const agent = (body?.feedback as { context?: { agent?: Record<string, unknown> } } | undefined)?.context?.agent;
+
+    console.log(`  paid            ${env?.paid}`);
+    console.log(`  protocol used   ${env?.protocolUsed}`);
+    console.log(`  http status     ${env?.status}`);
+    if (output?.result) {
+      const hf = Number(output.result) / 1e18;
+      console.log(`  health factor   ${hf.toFixed(4)}   (raw ${output.result})`);
+    }
+    if (body?.executionId) console.log(`  execution       ${body.executionId}`);
+    if (agent) console.log(`  ERC-8004 agent  #${agent.id}  ${agent.explorerUrl}`);
+
+    const after = readBalance(await client.callTool({ name: "balance", arguments: {} }));
+    console.log(`\n  Base USDC       ${before.base}  ->  ${after.base}`);
     console.log(
-      "\nThe reading above is the same on-chain value LIFELINE's check-and-execute gate gates on.\n" +
-        "Settlement is indexed on x402scan.com under the seller address.",
+      "\nThat health factor is the same on-chain value LIFELINE's check-and-execute gate reads.\n" +
+        "Settlement is an EIP-3009 transfer on Base, indexed on x402scan.com under the seller.",
     );
   } finally {
     await client.close();
